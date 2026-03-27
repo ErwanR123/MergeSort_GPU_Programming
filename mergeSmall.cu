@@ -2,34 +2,39 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 
-// Fusionne deux tableaux triés A (taille sA) et B (taille sB) dans M.
-// Un thread par élément de M, lancement : mergeSmall_k<<<1, sA+sB>>>
-// Algorithme Merge Path (Green, McColl, Bader 2012) : chaque thread i
-// cherche par dichotomie l'intersection du merge path avec la diagonale i.
+
+// Merge two sorted arrays A and B in M.
+// Thread of id i find M[i] using a binary search
+// of the merge path on the diagonal {(x,y) | x + y = i}.
 __global__ void mergeSmall_k(int* A, int sA,
                               int* B, int sB,
                               int* M) {
 
+
+    // We assume num_block = 1
     int i = threadIdx.x;
     if (i >= sA + sB) return;
 
-    // Bornes K (bas-gauche) et P (haut-droite) de la diagonale i dans la grille.
-    // x = index dans B (colonne), y = index dans A (ligne).
-    // Si i > sA, la diagonale déborde par le bas : K est sur le bord bas.
     int Kx, Ky, Px, Py;
     if (i > sA) {
-        Kx = i - sA;  Ky = sA;     // bord bas
-        Px = sA;      Py = i - sA; // cf. Algorithme 2 : P = (|A|, i-|A|)
+        Kx = i - sA;  
+        Ky = sA;
+
+        Px = sA;
+        Py = i - sA;
+
     } else {
-        Kx = 0;  Ky = i;  // bord gauche
-        Px = i;  Py = 0;  // bord haut
+        Kx = 0;
+        Ky = i;
+
+        Px = i;
+        Py = 0;
     }
 
-    // Recherche binaire du merge path sur [K, P].
-    // Q est sur le chemin si et seulement si :
-    //   (1) A[Qy] > B[Qx-1]  : le dernier B pris est bien avant le prochain A
-    //   (2) A[Qy-1] <= B[Qx] : le dernier A pris est bien avant le prochain B
-    while (1) {
+    // Q is on the merge path iff those 2 conditions are verified :
+    //   (1) A[Qy] > B[Qx-1]  : B’s elements are correctly placed before A (not too far right)
+    //   (2) A[Qy-1] <= B[Qx] : A’s elements are correctly placed before B (not too far down)
+    while (true) {
         int offset = abs(Ky - Py) / 2;
         int Qx = Kx + offset;
         int Qy = Ky - offset;
@@ -38,15 +43,23 @@ __global__ void mergeSmall_k(int* A, int sA,
             (Qy == sA || Qx == 0 || A[Qy] > B[Qx - 1])) {
 
             if (Qx == sB || Qy == 0 || A[Qy - 1] <= B[Qx]) {
-                // Q est sur le merge path : on écrit M[i]
-                M[i] = (Qy < sA && (Qx == sB || A[Qy] <= B[Qx])) ? A[Qy] : B[Qx];
+                // Q is on the merge path, we can now decide the value of M[i]
+                if (Qy < sA && (Qx == sB || A[Qy] <= B[Qx])){
+                    M[i] = A[Qy];
+                } else {
+                    M[i] = B[Qx];
+                }
                 return;
             } else {
-                Kx = Qx + 1;  // Q trop haut, on remonte K
+                // Q is too far down, and need to be higher (hence more on the right) 
+                // We update the low point of the diagonal to keep only the top right part
+                Kx = Qx + 1;
                 Ky = Qy - 1;
             }
         } else {
-            Px = Qx - 1;  // Q trop bas, on descend P
+            // Q is too far right, and need to be more on the left (hence lower) 
+            // We update the high point of the diagonal to keep only the bottom left part
+            Px = Qx - 1;
             Py = Qy + 1;
         }
     }
