@@ -2,34 +2,42 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 
-// Tri par merge sort bottom-up en shared memory.
-// On suppose d puissance de 2, d <= 1024.
+// Trie en parallèle N tableaux {M_i} de taille d (puissance de 2, d <= 1024).
+// Stratégie : merge sort bottom-up en shared memory avec buffers ping-pong.
+// Chaque groupe de d threads dans un bloc traite un tableau M_i.
 __global__ void sortSmallBatch_k(int* M, int d, int N) {
+
+    // Shared memory dynamique : 2*d cases par groupe (2 buffers ping-pong)
     extern __shared__ int smem[];
 
-    int Qt   = threadIdx.x / d;
-    int tidx = threadIdx.x - Qt * d;
-    int gbx  = Qt + blockIdx.x * (blockDim.x / d);
+    int Qt   = threadIdx.x / d;               // groupe local dans le bloc (un groupe = un tableau)
+    int tidx  = threadIdx.x - Qt * d;          // position locale dans le groupe (0 à d-1)
+    int gbx   = Qt + blockIdx.x * (blockDim.x / d); // indice global du tableau M_i
 
-    // 2 buffers ping-pong par groupe dans la shared memory
+    // src = buffer de lecture, dst = buffer d'écriture pour ce groupe
     int* src = smem + Qt * 2 * d;
     int* dst = src + d;
 
+    // Chargement depuis la mémoire globale (groupes fantômes chargent 0)
     if (gbx < N) {
         src[tidx] = M[gbx * d + tidx];
     } else {
         src[tidx] = 0;
-    }    __syncthreads();
+    }
+    __syncthreads();
 
+    // Passes du merge sort : on fusionne des sous-tableaux de taille w deux à deux
     for (int w = 1; w < d; w *= 2) {
-        int local = tidx % (2 * w);
-        int base  = tidx - local;
+
+        int local = tidx % (2 * w); // position dans le bloc de taille 2*w
+        int base  = tidx - local;   // début du bloc
         int sA = w, sB = w;
 
-        int* A = src + base;
-        int* B = src + base + sA;
-        int i = local;
+        int* A = src + base;        // moitié gauche (déjà triée)
+        int* B = src + base + sA;   // moitié droite (déjà triée)
+        int i = local;              // numéro de diagonale dans cette fusion
 
+        // Bornes initiales de la recherche binaire sur la diagonale i
         int Kx, Ky, Px, Py;
         if (i > sA) {
             Kx = i - sA; Ky = sA;
@@ -39,6 +47,7 @@ __global__ void sortSmallBatch_k(int* M, int d, int N) {
             Px = i; Py = 0;
         }
 
+        // Recherche binaire du point d'intersection entre la diagonale i et le merge path
         while (1) {
             int offset = abs(Ky - Py) / 2;
             int Qx = Kx + offset;
@@ -48,8 +57,12 @@ __global__ void sortSmallBatch_k(int* M, int d, int N) {
                 (Qy == sA || Qx == 0 || A[Qy] > B[Qx - 1])) {
 
                 if (Qx == sB || Qy == 0 || A[Qy - 1] <= B[Qx]) {
-                    dst[tidx] = (Qy < sA && (Qx == sB || A[Qy] <= B[Qx]))
-                               ? A[Qy] : B[Qx];
+                    // Point trouvé : on écrit l'élément de rang i dans dst
+                    if (Qy < sA && (Qx == sB || A[Qy] <= B[Qx])) {
+                        dst[tidx] = A[Qy];
+                    } else {
+                        dst[tidx] = B[Qx];
+                    }
                     break;
                 } else {
                     Kx = Qx + 1;
@@ -61,10 +74,10 @@ __global__ void sortSmallBatch_k(int* M, int d, int N) {
             }
         }
 
-        // __syncthreads() doit être appelé par tous les threads du bloc,
-        // y compris ceux hors-borne (gbx >= N), d'où l'absence de return anticipé
+        // __syncthreads() appelé par tous les threads du bloc (y compris gbx >= N)
+        // d'où l'absence de return anticipé avant la boucle
         __syncthreads();
-        int* tmp = src; src = dst; dst = tmp;
+        int* tmp = src; src = dst; dst = tmp; // ping-pong : dst devient src pour la passe suivante
     }
 
     if (gbx < N)
@@ -135,6 +148,3 @@ int main() {
 
     return 0;
 }
-
-
-
