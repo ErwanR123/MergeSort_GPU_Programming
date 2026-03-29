@@ -22,29 +22,29 @@ void testCUDA(cudaError_t error, const char* file, int line) {
 #define CUDA_CHECK(error) (testCUDA(error, __FILE__ , __LINE__))
 
 void mergeSmallBatch_CPU(int* A, int* B,
-                         int d, int N,
-                         int* M){
+                         int n_A, int n_B,
+                         int N, int* M){
 
     for (int batch = 0; batch < N; batch++){
-        int* myA = A + batch * d;
-        int* myB = B + batch * d;
-        int* myM = M + batch * d;
+        int* myA = A + batch * n_A;
+        int* myB = B + batch * n_B;
+        int* myM = M + batch * (n_A + n_B);
 
         int i = 0;
         int j = 0;
 
-        while (i+j < 2 * d)
+        while (i+j < n_A + n_B)
         {
-            if (i >= d){
+            if (i >= n_A){
                 myM[i+j] = myB[j];
                 j += 1;
             }
-            else if (j >= d)
+            else if (j >= n_B)
             {
                 myM[i+j] = myA[i];
                 i += 1;
             }
-            else if (myA[i] < myB[j])
+            else if (myA[i] <= myB[j])
             {
                 myM[i+j] = myA[i];
                 i += 1;
@@ -149,52 +149,12 @@ __global__ void mergeSmallBatch_k(int* A, int* B, int* M,
 void verify_result(int* M, int d, int N){
     for (int batch = 0; batch < N ; batch++){
         for (int i = 0; i < d-1; i++){
-            assert(M[i] < M[i+1]);
+            assert(M[i + d * batch] <= M[i+1 + d * batch]);
         }
     }
 }
 
 int main() {
-
-    // // ---- TEST DE CORRECTION ----------------------------------------
-    // printf("=== TEST DE CORRECTION (N=4, d=8) ===\n");
-    // {
-    //     int N = 4, sA = 4, sB = 4, d = sA + sB;
-
-    //     int h_A[] = { 1,  5,  9, 13,
-    //                   2,  6, 10, 14,
-    //                   3,  7, 11, 15,
-    //                   4,  8, 12, 16 };
-    //     int h_B[] = { 0,  3,  7, 11,
-    //                   1,  4,  8, 12,
-    //                   2,  5,  9, 13,
-    //                   3,  6, 10, 14 };
-    //     int *h_M = (int*)malloc(N * d * sizeof(int));
-
-    //     int *d_A, *d_B, *d_M;
-    //     cudaMalloc(&d_A, N * sA * sizeof(int));
-    //     cudaMalloc(&d_B, N * sB * sizeof(int));
-    //     cudaMalloc(&d_M, N * d  * sizeof(int));
-    //     cudaMemcpy(d_A, h_A, N * sA * sizeof(int), cudaMemcpyHostToDevice);
-    //     cudaMemcpy(d_B, h_B, N * sB * sizeof(int), cudaMemcpyHostToDevice);
-
-    //     bench(d_A, d_B, d_M, sA, sB, d, N);
-    //     cudaMemcpy(h_M, d_M, N * d * sizeof(int), cudaMemcpyDeviceToHost);
-
-    //     for (int p = 0; p < N; p++) {
-    //         printf("M%d = ", p + 1);
-    //         for (int j = 0; j < d; j++) printf("%d ", h_M[p * d + j]);
-    //         printf("\n");
-    //     }
-    //     // Attendu :
-    //     // M1 = 0 1 3 5 7 9 11 13
-    //     // M2 = 1 2 4 6 8 10 12 14
-    //     // M3 = 2 3 5 7 9 11 13 15
-    //     // M4 = 3 4 6 8 10 12 14 16
-
-    //     cudaFree(d_A); cudaFree(d_B); cudaFree(d_M);
-    //     free(h_M);
-    // }
 
     Timer Tim;
     int n_A, n_B, n_batch, d;
@@ -217,20 +177,33 @@ int main() {
     // Generate random arrays
     generate(h_A, h_A + (n_batch * n_A), []() { return rand() % 1000; });
     generate(h_B, h_B + (n_batch * n_B), []() { return rand() % 1000; });
+    // printf("Generation ok \n");
+    // printf("h_A : ");
+    // for (int i = 0; i<(n_batch * n_A); i++) printf(" %d,", h_A[i]);
+    // printf("\nh_B : ");
+    // for (int i = 0; i<(n_batch * n_B); i++) printf(" %d,", h_B[i]);
 
     // 2. Sort the arrays per group before merging them
     for (int batch = 0; batch < n_batch; batch++){
         std::sort(h_A + (batch * n_A), h_A + (batch + 1) * n_A );
         std::sort(h_B + (batch * n_B), h_B + (batch + 1) * n_B );
     }
+    // printf("\nSorted:");
+    // printf("\nh_A : ");
+    // for (int i = 0; i<(n_batch * n_A); i++) printf(" %d,", h_A[i]);
+    // printf("\nh_B : ");
+    // for (int i = 0; i<(n_batch * n_B); i++) printf(" %d,", h_B[i]);
     
     // CPU sort/merge
     Tim.start();
-    mergeSmallBatch_CPU(h_A, h_B, d, n_batch, h_M);
+    mergeSmallBatch_CPU(h_A, h_B, n_A, n_B, n_batch, h_M);
     Tim.add();
     float cpu_time_merge = Tim.getsum();
     verify_result(h_M, d, n_batch);
-    printf("CPU Merge completed in %f s.\n", cpu_time_merge);
+    printf("\nCPU Merge completed in %f s.\n", cpu_time_merge);
+    // printf("\nOutput:");
+    // printf("\nh_M : ");
+    // for (int i = 0; i<(n_batch * d); i++) printf(" %d,", h_M[i]);
 
     // GPU sort/merge
     int *d_A, *d_B, *d_M;
