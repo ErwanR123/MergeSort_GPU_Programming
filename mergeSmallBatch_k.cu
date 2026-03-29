@@ -57,25 +57,33 @@ __global__ void mergeSmallBatch_k(int* A, int* B, int* M,
     }
 
     while (1) {
-        int offset = abs(Ky - Py) / 2;
-        int Qx = Kx + offset;
-        int Qy = Ky - offset;
+    int offset = abs(Ky - Py) / 2;
+    int Qx = Kx + offset;
+    int Qy = Ky - offset;
 
-        if (Qy >= 0 && Qx <= sB &&
-            (Qy == sA || Qx == 0 || myA[Qy] > myB[Qx - 1])) {
+    if (Qy >= 0 && Qx <= sB &&
+        (Qy == sA || Qx == 0 || myA[Qy] > myB[Qx - 1])) {
 
-            if (Qx == sB || Qy == 0 || myA[Qy - 1] <= myB[Qx]) {
-                myM[i] = (Qy < sA && (Qx == sB || myA[Qy] <= myB[Qx]))
-                         ? myA[Qy] : myB[Qx];
-                return;
+        if (Qx == sB || Qy == 0 || myA[Qy - 1] <= myB[Qx]) {
+
+            if (Qy < sA && (Qx == sB || myA[Qy] <= myB[Qx])) {
+                myM[i] = myA[Qy];
             } else {
-                Kx = Qx + 1;
-                Ky = Qy - 1;
+                myM[i] = myB[Qx];
             }
+            return;
+
         } else {
-            Px = Qx - 1;
-            Py = Qy + 1;
+            // Trop bas → aller à droite
+            Kx = Qx + 1;
+            Ky = Qy - 1;
         }
+
+    }   else {
+        // Trop à droite → aller à gauche
+        Px = Qx - 1;
+        Py = Qy + 1;
+    }
     }
 }
 
