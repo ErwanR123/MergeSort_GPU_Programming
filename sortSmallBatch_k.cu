@@ -15,8 +15,11 @@ __global__ void sortSmallBatch_k(int* M, int d, int N) {
     int* src = smem + Qt * 2 * d;
     int* dst = src + d;
 
-    src[tidx] = (gbx < N) ? M[gbx * d + tidx] : 0;
-    __syncthreads();
+    if (gbx < N) {
+        src[tidx] = M[gbx * d + tidx];
+    } else {
+        src[tidx] = 0;
+    }    __syncthreads();
 
     for (int w = 1; w < d; w *= 2) {
         int local = tidx % (2 * w);
