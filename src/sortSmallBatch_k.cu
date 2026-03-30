@@ -100,7 +100,7 @@ __global__ void sortSmallBatch_k(int* M_batch, int d, int N) {
                         } else {
                             dst[tidx] = B[Qx];
                         }
-                        break; // Found it! Exit the while loop.
+                        break;
                     } else {
                         Kx = Qx + 1; Ky = Qy - 1;
                     }
@@ -112,7 +112,7 @@ __global__ void sortSmallBatch_k(int* M_batch, int d, int N) {
 
         __syncthreads();
 
-        // Swap the pointers for the next pass!
+        // Swap the pointers for the next pass
         int* temp = src;
         src = dst;
         dst = temp;
@@ -226,7 +226,7 @@ int main() {
     printf("\n========== Constant Workload Benchmark (Full Sort) ==========\n");
     printf("Allocating %d elements...\n", totalElems);
 
-    // 1. Allocate Memory ONCE (Size never changes)
+    // Allocate Memory once (Size never changes)
     int* h_M_in_test = new int[totalElems];
     int* d_M_test;
     CUDA_CHECK(cudaMalloc(&d_M_test, totalElems * sizeof(int)));
@@ -242,20 +242,17 @@ int main() {
     std::generate(h_M_in_test, h_M_in_test + totalElems, []() { return rand() % 10000; });
     bench_sort_with_timer(d_M_test, h_M_in_test, 1024, totalElems / 1024, totalElems, Tim);
 
-    // 2. Loop through all values of 'd'
+    // Loop 
     for (int k = 0; k < nd; k++) {
         int d_bench = ds[k];
         int N_bench = totalElems / d_bench;  
 
-        // =================================================================
-        // THE FIX: Generate completely FRESH random data for this exact 'd'
-        // =================================================================
+        // Generate new data
         std::generate(h_M_in_test, h_M_in_test + totalElems, []() { return rand() % 10000; });
 
         int tpb_bench = (1024 / d_bench) * d_bench;
         int groupesParBloc_bench = tpb_bench / d_bench;
 
-        // Run the benchmark (copies the fresh data to GPU and times it)
         float ms = bench_sort_with_timer(d_M_test, h_M_in_test, d_bench, N_bench, totalElems, Tim);
         
         printf("%-8d %-12d %-10d %-14d %.3f\n", d_bench, N_bench, tpb_bench, groupesParBloc_bench, ms);

@@ -139,9 +139,9 @@ __global__ void mergeSmallBatch_k_optimized(int* A_batch, int* B_batch,
     // Dynamically allocate Shared Memory for the ENTIRE block
     extern __shared__ int s_batch[];
 
+    int shared_offset = Qt * d; // Where does this pair's chunk start?
+    
     if (gbx < N) {
-        
-        int shared_offset = Qt * d; // Where does this pair's chunk start?
         
         if (tidx < n_A) {
             // Load from A
@@ -157,18 +157,24 @@ __global__ void mergeSmallBatch_k_optimized(int* A_batch, int* B_batch,
     if (gbx >= N) return;
 
     // This points exactly to where this thread's specific arrays live in shared memory
-    int* s_A = &s_batch[Qt * d];
-    int* s_B = &s_batch[(Qt * d) + n_A];
+    int* s_A = &s_batch[shared_offset];
+    int* s_B = &s_batch[shared_offset + n_A];
 
     int i = tidx; 
 
     int Kx, Ky, Px, Py;
     if (i > n_A) {
-        Kx = i - n_A;  Ky = n_A;
-        Px = n_A;      Py = i - n_A;
+        Kx = i - n_A;
+        Ky = n_A;
+        
+        Px = n_A;
+        Py = i - n_A;
     } else {
-        Kx = 0;        Ky = i;
-        Px = i;        Py = 0;
+        Kx = 0;
+        Ky = i;
+
+        Px = i;
+        Py = 0;
     }
 
     while (true) {
@@ -277,11 +283,11 @@ int main() {
     CUDA_CHECK(cudaMemcpy(d_B, h_B, (n_batch * n_B) * sizeof(int), cudaMemcpyHostToDevice));
     
     int threadsPerBlock = (1024 / d) * d;
-    int groupesPerBlock  = threadsPerBlock / d;
-    int numBlocks       = (n_batch + groupesPerBlock - 1) / groupesPerBlock;
+    int groupesPerBlock = threadsPerBlock / d;
+    int numBlocks = (n_batch + groupesPerBlock - 1) / groupesPerBlock;
 
     // Calculate the total bytes needed for the shared memory array
-    int sharedMemBytes  = threadsPerBlock * sizeof(int);
+    int sharedMemBytes = threadsPerBlock * sizeof(int);
     
     // WARM-UP RUN
     mergeSmallBatch_k <<<numBlocks, threadsPerBlock>>> (d_A, d_B, d_M, n_A, n_B, n_batch);
@@ -318,7 +324,7 @@ int main() {
     verify_result(h_M, d, n_batch);
 
     // Printing results
-    printf("\nGPU Merge SHARED completed in %f s.\n", gpu_time_merge_shared);
+    printf("\nGPU Merge using shared memory completed in %f s.\n", gpu_time_merge_shared);
     printf("GPU Merge completed in %f s.\n", gpu_time_merge);
     printf("GPU Merge + transfer to CPU completed in %f s.\n", gpu_time_merge_to_cpu);
 
@@ -363,24 +369,24 @@ int main() {
         int sB_bench = d_bench / 2;
         int N_bench  = totalElems / d_bench;  
 
-        // 1. Generate completely fresh random data for this specific test
+        // Generate new data
         std::generate(h_A, h_A + halfElems, []() { return rand() % 10000; });
         std::generate(h_B, h_B + halfElems, []() { return rand() % 10000; });
 
-        // 2. Sort the arrays EXACTLY in chunks of the current sA and sB
+        // Sort the arrays in chunks
         for (int i = 0; i < N_bench; i++) {
             std::sort(h_A + (i * sA_bench), h_A + ((i + 1) * sA_bench));
             std::sort(h_B + (i * sB_bench), h_B + ((i + 1) * sB_bench));
         }
 
-        // 3. Copy the freshly prepared, custom data to the GPU
+        // Transfer CPU -> GPU
         CUDA_CHECK(cudaMemcpy(d_A, h_A, halfElems * sizeof(int), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_B, h_B, halfElems * sizeof(int), cudaMemcpyHostToDevice));
 
         int tpb_bench            = (1024 / d_bench) * d_bench;
         int groupesParBloc_bench = tpb_bench / d_bench;
 
-        // 4. Run the benchmark
+        // Run the benchmark
         float ms = bench_with_timer(d_A, d_B, d_M, sA_bench, sB_bench, d_bench, N_bench, Tim);
         
         printf("%-8d %-12d %-10d %-14d %.3f\n", d_bench, N_bench, tpb_bench, groupesParBloc_bench, ms);
