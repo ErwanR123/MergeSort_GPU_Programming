@@ -124,6 +124,8 @@ __global__ void mergeSmallBatch_k(int* A, int* B, int* M,
     }
 }
 
+// Here we try to use shared memory to reduce the compute time
+// In reality we obtain worse result as we have bank acces issues
 __global__ void mergeSmallBatch_k_optimized(int* A_batch, int* B_batch,
                                             int* M_batch, int n_A, 
                                             int n_B, int N) {
