@@ -56,7 +56,7 @@ nvcc src/filename.cu -o bin/filename
 ## 📚 References
 * O. Green, R. McColl, and D. A. Bader, *"GPU Merge Path - A GPU Merging Algorithm."* Proceedings of the 26th ACM International Conference on Supercomputing (ICS), 2012.
 
-## 📫 Contact & Authors
+## 📫 Contact
 
 * **Samy AIMEUR** - [samy.aimeur_at_telecom-paris_dot_fr]
 * **Erwan Ouabdesselam** - [erwan.ouabdesselam_at_dauphine_dot_eu]
