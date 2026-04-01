@@ -57,5 +57,5 @@ nvcc src/filename.cu -o bin/filename
 
 ## 📫 Contact & Authors
 
-**[Your Name]** - [your.email@example.com]  
-**[Partner/Teammate Name]** - [partner.email@example.com]
+* **Samy AIMEUR** - [samy.aimeur_at_telecom-paris_dot_fr]
+* **Erwan Ouabdesselam** - [erwan.ouabdesselam_at_dauphine_dot_eu]
