@@ -20,7 +20,7 @@ By implementing the 2-Stage algorithm, this project achieves a **~32x speedup** 
 ├── figs/           # Benchmark graphs (Execution time vs Array size)
 ├── src/            # CUDA C++ source code and headers (timer.h)
 ├── Proj2026.pdf    # Original project assignment (Problem 4 : Merge big and batch sort small)
-├── slides.pdf      # Presentation slides of the projects
+├── slides.pdf      # Presentation slides of the project
 └── README.md       # Project documentation
 ```
 
