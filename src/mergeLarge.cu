@@ -258,13 +258,13 @@ int main() {
         CUDA_CHECK(cudaMemcpy(d_B, h_B, n_B * sizeof(int), cudaMemcpyHostToDevice));
 
         // CPU benchmark
-        // Tim.reset();
-        // Tim.start();
-        // mergeCPU(h_A, n_A, h_B, n_B, h_M);
-        // Tim.add();
-        // float cpu_time_merge = Tim.getsum() * 1000.0f;
-        // verify_result(h_M, n_A + n_B);
-        float cpu_time_merge = 1000.0f;
+        Tim.reset();
+        Tim.start();
+        mergeCPU(h_A, n_A, h_B, n_B, h_M);
+        Tim.add();
+        float cpu_time_merge = Tim.getsum() * 1000.0f;
+        verify_result(h_M, n_A + n_B);
+        // float cpu_time_merge = 1000.0f;
 
         // Letting hardware power states reset
         std::this_thread::sleep_for(std::chrono::seconds(2));
